@@ -24,47 +24,43 @@ public class FactusRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        log.info("--- 🏁 INICIANDO RETO DE FACTURACIÓN (MODO SENIOR INTEGRADO) ---");
 
         // 1. Configuración del Cliente
         CustomerDTO cliente = new CustomerDTO();
         cliente.setIdentification("123456789");
-        cliente.setNames("Felipe Sulez - Final Refactor");
+        cliente.setNames("Felipe Sulez - Refresh Test");
         cliente.setEmail("felipe@ejemplo.com");
 
-        // 2. Configuración del Producto (Aseguramos el Nombre)
+        // 2. Configuración del Producto
         ItemDTO producto = new ItemDTO();
-        producto.setCodeReference("PROD-FINAL");
-        producto.setName("Producto Reto Spring"); // <-- El campo que la API reclama
+        producto.setCodeReference("PROD-REFRESH");
+        producto.setName("Producto Prueba Resiliencia");
         producto.setPrice(75000.0);
         producto.setQuantity(2);
 
-        // 3. Construcción de la Factura con asignación explícita de lista
+        // 3. Construcción de la Factura
         InvoiceRequest factura = new InvoiceRequest();
-        factura.setReferenceCode("RETO_FINAL_" + System.currentTimeMillis());
-        factura.setObservation("Factura integrada con logs y solución de mapeo");
+        factura.setReferenceCode("RETO_REFRESH_" + System.currentTimeMillis());
         factura.setCustomer(cliente);
 
-        // Creamos la lista manualmente para asegurar que Jackson la detecte
         List<ItemDTO> listaItems = new ArrayList<>();
         listaItems.add(producto);
         factura.setItems(listaItems);
 
-        // 4. Envío y manejo de respuesta
+        // 4. Envío (Aquí es donde el Interceptor debe salvar el día)
         try {
-            log.info("📡 Conectando con el servicio de validación Factus...");
+            log.info("3️⃣ Intentando enviar factura con token dañado...");
             Map<String, Object> respuesta = factusService.enviarFactura(factura);
 
-            // Verificamos si la respuesta contiene el estado esperado
             if (respuesta != null && "Created".equals(respuesta.get("status"))) {
-                log.info("✅ ÉXITO TOTAL: {}", respuesta.get("message"));
+                log.info("✅ ¡PRUEBA SUPERADA! La factura se envió tras el Refresh automático.");
+                log.info("Mensaje API: {}", respuesta.get("message"));
             } else {
-                log.warn("⚠️ RESPUESTA DE LA API: {}", respuesta);
+                log.warn("⚠️ RESPUESTA INESPERADA: {}", respuesta);
             }
 
         } catch (Exception e) {
-            // El log.error con tres parámetros imprime el mensaje y el error completo
-            log.error("❌ ERROR EN EL PROCESO: {}", e.getMessage(), e);
+            log.error("❌ FALLO LA PRUEBA: {}", e.getMessage());
         }
     }
 }

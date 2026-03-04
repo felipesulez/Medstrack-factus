@@ -1,7 +1,7 @@
 package com.felipesulez.reto_facturacion.service;
 
 import com.felipesulez.reto_facturacion.dto.InvoiceRequest;
-import lombok.extern.slf4j.Slf4j; // Importamos el logger de Lombok
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -12,7 +12,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import java.util.Map;
 
-@Slf4j // Genera automáticamente la variable 'log'
+@Slf4j
 @Service
 public class FactusService {
 
@@ -42,7 +42,7 @@ public class FactusService {
 
     public void login() {
         String url = apiUrl + "/oauth/token";
-        log.info("Iniciando proceso de autenticación en Factus..."); // Log profesional
+        log.info("📡 Iniciando proceso de autenticación en Factus (Login completo)...");
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("grant_type", "password");
@@ -59,21 +59,26 @@ public class FactusService {
                 log.info("✅ Login exitoso. Token obtenido correctamente.");
             }
         } catch (Exception e) {
-            log.error("❌ Error durante el login: {}", e.getMessage()); // Log de error con variable
+            log.error("❌ Error crítico durante el login: {}", e.getMessage());
         }
     }
-
-    // Dentro de FactusService.java
 
     public String getAccessToken() {
         return this.accessToken;
     }
 
     public void refrescarToken() {
-        log.info("📡 Solicitando renovación de token mediante refresh_token...");
-        String url = apiUrl + "/oauth/token";
+        log.info("🔄 Ejecutando Refresh Token Flow...");
 
-        org.springframework.util.MultiValueMap<String, String> body = new org.springframework.util.LinkedMultiValueMap<>();
+        // Si no tenemos un refresh token guardado, no podemos refrescar, hacemos login
+        if (this.refreshToken == null) {
+            log.warn("⚠️ No hay Refresh Token disponible. Reintentando Login completo...");
+            login();
+            return;
+        }
+
+        String url = apiUrl + "/oauth/token";
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("grant_type", "refresh_token");
         body.add("client_id", clientId);
         body.add("client_secret", clientSecret);
@@ -81,31 +86,33 @@ public class FactusService {
 
         try {
             Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
-            if (response != null) {
+            if (response != null && response.containsKey("access_token")) {
                 this.accessToken = (String) response.get("access_token");
                 this.refreshToken = (String) response.get("refresh_token");
-                log.info("✅ Token renovado exitosamente.");
+                log.info("✅ ¡ÉXITO! Token renovado usando el Refresh Token original.");
             }
         } catch (Exception e) {
-            log.error("❌ Refresh Token fallido. Intentando Login completo...");
+            log.error("❌ El Refresh Token falló. Forzando Login completo...");
             login();
         }
     }
 
-
-
     public Map<String, Object> enviarFactura(InvoiceRequest factura) {
         String url = apiUrl + "/v1/bills/validate";
-        log.info("Enviando factura con referencia: {}", factura.getReferenceCode()); // Referencia limpia
+        log.info("🚀 Intentando enviar factura: {}", factura.getReferenceCode());
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(getAccessToken());
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        // SIMULACIÓN: Forzamos un error 401 enviando un token inválido
-        //headers.setBearerAuth("token_basura_para_prueba");
+        // TIP PRO: Manejo seguro de nulidad.
+        // Si el token es null, mandamos un String vacío. Esto causará un 401 controlado
+        // por el Interceptor, el cual llamará a refrescarToken() o login() automáticamente.
+        String currentToken = (this.accessToken != null) ? this.accessToken : "";
+        headers.setBearerAuth(currentToken);
 
         HttpEntity<InvoiceRequest> request = new HttpEntity<>(factura, headers);
+
+        // El interceptor se encarga de reintentar si esto devuelve 401
         return restTemplate.postForObject(url, request, Map.class);
     }
 }
