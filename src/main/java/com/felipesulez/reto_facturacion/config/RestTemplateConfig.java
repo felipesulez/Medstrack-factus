@@ -11,4 +11,10 @@ public class RestTemplateConfig {
     public RestTemplate restTemplate() {
         return new RestTemplate();
     }
+    @Bean
+    public RestTemplate restTemplate(TokenInterceptor tokenInterceptor) {
+        RestTemplate restTemplate = new RestTemplate();
+        restTemplate.setInterceptors(java.util.Collections.singletonList(tokenInterceptor));
+        return restTemplate;
+    }
 }

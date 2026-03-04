@@ -63,10 +63,36 @@ public class FactusService {
         }
     }
 
+    // Dentro de FactusService.java
+
     public String getAccessToken() {
-        if (accessToken == null) login();
-        return accessToken;
+        return this.accessToken;
     }
+
+    public void refrescarToken() {
+        log.info("📡 Solicitando renovación de token mediante refresh_token...");
+        String url = apiUrl + "/oauth/token";
+
+        org.springframework.util.MultiValueMap<String, String> body = new org.springframework.util.LinkedMultiValueMap<>();
+        body.add("grant_type", "refresh_token");
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
+        body.add("refresh_token", this.refreshToken);
+
+        try {
+            Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
+            if (response != null) {
+                this.accessToken = (String) response.get("access_token");
+                this.refreshToken = (String) response.get("refresh_token");
+                log.info("✅ Token renovado exitosamente.");
+            }
+        } catch (Exception e) {
+            log.error("❌ Refresh Token fallido. Intentando Login completo...");
+            login();
+        }
+    }
+
+
 
     public Map<String, Object> enviarFactura(InvoiceRequest factura) {
         String url = apiUrl + "/v1/bills/validate";
