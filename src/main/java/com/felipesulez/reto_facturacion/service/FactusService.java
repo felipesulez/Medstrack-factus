@@ -102,6 +102,9 @@ public class FactusService {
         headers.setBearerAuth(getAccessToken());
         headers.setContentType(MediaType.APPLICATION_JSON);
 
+        // SIMULACIÓN: Forzamos un error 401 enviando un token inválido
+        //headers.setBearerAuth("token_basura_para_prueba");
+
         HttpEntity<InvoiceRequest> request = new HttpEntity<>(factura, headers);
         return restTemplate.postForObject(url, request, Map.class);
     }
