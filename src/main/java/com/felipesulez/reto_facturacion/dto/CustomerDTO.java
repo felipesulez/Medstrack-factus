@@ -1,43 +1,41 @@
 package com.felipesulez.reto_facturacion.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.*;
 import lombok.Data;
 
 @Data
 public class CustomerDTO {
-    @JsonProperty("identification")
+
+    @NotBlank(message = "La identificación es obligatoria")
     private String identification;
 
-    @JsonProperty("dv")
+    // Se quita @NotBlank para que el Service lo calcule
     private String dv;
 
-    @JsonProperty("company")
+    @NotBlank(message = "La razón social (company) es obligatoria")
     private String company;
 
-    @JsonProperty("trade_name")
-    private String tradeName;
-
-    @JsonProperty("names")
+    @NotBlank(message = "El nombre es obligatorio")
     private String names;
 
-    @JsonProperty("address")
+    @NotBlank(message = "La dirección es obligatoria")
     private String address;
 
-    @JsonProperty("email")
+    @NotBlank(message = "El correo electrónico es obligatorio")
+    @Email(message = "El formato del correo no es válido")
     private String email;
 
-    @JsonProperty("phone")
-    private String phone;
-
     @JsonProperty("identification_document_id")
-    private String identificationDocumentId = "3";
+    private String identificationDocumentId; // Se llena en el Service (default "3" o "6")
 
     @JsonProperty("legal_organization_id")
-    private String legalOrganizationId = "2";
+    private String legalOrganizationId; // Se llena en el Service
 
     @JsonProperty("tribute_id")
-    private String tributeId = "21";
+    private String tributeId; // Se llena en el Service
 
     @JsonProperty("municipality_id")
-    private String municipalityId = "980";
+    private String municipalityId; // Se llena en el Service
 }
