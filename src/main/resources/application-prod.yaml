@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: reto-facturacion
+
+factus:
+  api:
+    url: ${FACTUS_API_URL}
+    endpoints:
+      auth: /oauth/token
+      validate: /v1/bills/validate
+    auth:
+      client-id: ${FACTUS_CLIENT_ID}
+      client-secret: ${FACTUS_CLIENT_SECRET}
+    credentials:
+      username: ${FACTUS_USERNAME}
+      password: ${FACTUS_PASSWORD}
+
+  defaults:
+    numbering-range-id: ${FACTUS_RANGE_ID:8}
+    municipality-id: ${FACTUS_MUN_ID:980}
+    payment-form: "1"
+    payment-method-code: "10"
+    operation-type: 10
+
+# Actuator para health checks de Railway
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: never
+
+# Logging estructurado para producción
+logging:
+  level:
+    root: WARN
+    com.felipesulez.reto_facturacion: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

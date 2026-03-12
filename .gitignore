@@ -14,5 +14,5 @@ target/
 Thumbs.db
 
 # Secrets
-src/main/resources/application.yaml
+src/main/resources/application-dev.yaml
 src/main/resources/application.properties
