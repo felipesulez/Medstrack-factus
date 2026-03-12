@@ -1,6 +1,10 @@
 package com.felipesulez.reto_facturacion.util;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j // ✅ Agrega el logger de Lombok
 public class NitUtils {
+
     public static String calcularDV(String nit) {
         if (nit == null || nit.trim().isEmpty()) return null;
 
@@ -9,13 +13,14 @@ public class NitUtils {
         int suma = 0;
 
         for (int i = 0; i < nitLimpio.length(); i++) {
-            // Tomamos el dígito de derecha a izquierda
             int digito = Character.getNumericValue(nitLimpio.charAt(nitLimpio.length() - 1 - i));
             suma += (digito * pesos[i]);
         }
 
         int residuo = suma % 11;
-        System.out.println("DEBUG MEDSTRACK - Suma: " + suma + " para NIT: " + nitLimpio);
+        // ✅ log.debug solo aparece si el nivel de log está en DEBUG
+        // En producción (WARN/INFO) esta línea no genera ninguna salida
+        log.debug("Cálculo DV - Suma: {} para NIT: {}", suma, nitLimpio);
         return (residuo < 2) ? String.valueOf(residuo) : String.valueOf(11 - residuo);
     }
 }

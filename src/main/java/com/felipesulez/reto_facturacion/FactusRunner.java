@@ -4,12 +4,14 @@ import com.felipesulez.reto_facturacion.dto.*;
 import com.felipesulez.reto_facturacion.service.FactusService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.List;
 
 @Slf4j
 @Component
+@Profile("dev") // ✅ Solo se ejecuta en desarrollo, nunca en Railway
 public class FactusRunner implements CommandLineRunner {
 
     private final FactusService factusService;

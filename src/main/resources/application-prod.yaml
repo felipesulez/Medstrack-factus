@@ -3,6 +3,9 @@ spring:
     name: reto-facturacion
 
 factus:
+  http:
+    connect-timeout-ms: ${FACTUS_CONNECT_TIMEOUT:5000}
+    read-timeout-ms: ${FACTUS_READ_TIMEOUT:15000}
   api:
     url: ${FACTUS_API_URL}
     endpoints:
