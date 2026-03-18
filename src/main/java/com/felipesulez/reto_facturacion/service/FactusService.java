@@ -2,6 +2,7 @@ package com.felipesulez.reto_facturacion.service;
 
 import com.felipesulez.reto_facturacion.config.FactusProperties;
 import com.felipesulez.reto_facturacion.dto.*;
+import com.felipesulez.reto_facturacion.dto.factus.FactusApiResponse;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -32,7 +33,6 @@ public class FactusService {
         this.props = props;
     }
 
-    // ✅ Inicializa el token al arrancar para evitar NPE en primera petición
     @PostConstruct
     public void init() {
         try {
@@ -56,7 +56,7 @@ public class FactusService {
 
     // --- MÉTODOS DE NEGOCIO ---
 
-    public Map<String, Object> enviarFactura(InvoiceRequest factura) {
+    public InvoiceResponse enviarFactura(InvoiceRequest factura) {
         enriquecerConDefaults(factura);
 
         if (factura.getReferenceCode() == null || factura.getReferenceCode().contains("SMOKE")) {
@@ -67,31 +67,43 @@ public class FactusService {
         log.info("🚀 Enviando factura Medstrack. Ref: {}", factura.getReferenceCode());
 
         try {
-            return ejecutarConRetry(() ->
-                    restTemplate.postForObject(url, new HttpEntity<>(factura, crearHeaders()), Map.class)
+            FactusApiResponse response = ejecutarConRetry(() ->
+                    restTemplate.postForObject(
+                            url,
+                            new HttpEntity<>(factura, crearHeaders()),
+                            FactusApiResponse.class
+                    )
             );
+            log.info("✅ Factura validada. Número: {}", response != null && response.getData() != null
+                    && response.getData().getBill() != null ? response.getData().getBill().getNumber() : "?");
+            return InvoiceResponse.from(response);
+
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 409) {
                 log.warn("⚠️ 409 Conflict — factura pendiente en sandbox. Limpiando automáticamente...");
                 limpiarFacturaPendiente();
                 log.info("🔁 Reintentando envío. Ref: {}", factura.getReferenceCode());
-                return ejecutarConRetry(() ->
-                        restTemplate.postForObject(url, new HttpEntity<>(factura, crearHeaders()), Map.class)
+                FactusApiResponse response = ejecutarConRetry(() ->
+                        restTemplate.postForObject(
+                                url,
+                                new HttpEntity<>(factura, crearHeaders()),
+                                FactusApiResponse.class
+                        )
                 );
+                return InvoiceResponse.from(response);
             }
             throw e;
         }
     }
 
     /**
-     * Busca la factura más reciente en estado pendiente (state=0) y la anula.
+     * Busca la factura más reciente en estado pendiente (status=0) y la anula.
      * Factus bloquea el rango de numeración mientras exista una factura pendiente de DIAN.
      * Se llama automáticamente cuando enviarFactura() recibe un 409.
      */
     @SuppressWarnings("unchecked")
     private void limpiarFacturaPendiente() {
         try {
-            // 1. Listar facturas en estado pendiente (status=0)
             String listUrl = props.getApi().getUrl() + "/v1/bills?status=0&per_page=5";
             ResponseEntity<Map> listResponse = restTemplate.exchange(
                     listUrl, HttpMethod.GET, new HttpEntity<>(crearHeaders()), Map.class
@@ -103,7 +115,6 @@ public class FactusService {
                 return;
             }
 
-            // 2. Navegar data.data (paginación de Factus)
             Object dataRaw = body.get("data");
             List<Map<String, Object>> bills = null;
 
@@ -119,13 +130,10 @@ public class FactusService {
             }
 
             Map<String, Object> primera = bills.get(0);
-
-            // El campo confirmado por Factus es "reference_code"
             Object referenceCode = primera.get("reference_code");
             Object billNumber    = primera.get("number");
             log.info("🗑️ Eliminando factura pendiente — ref: {}, number: {}", referenceCode, billNumber);
 
-            // 3. Eliminar con DELETE /v1/bills/destroy/reference/:reference_code
             String deleteUrl = props.getApi().getUrl() + "/v1/bills/destroy/reference/" + referenceCode;
             try {
                 restTemplate.exchange(
@@ -148,8 +156,7 @@ public class FactusService {
 
     /**
      * Descarga el PDF de una factura desde Factus.
-     * Factus NO devuelve bytes binarios — siempre responde con JSON:
-     * { "data": { "pdf_base_64_encoded": "JVBERi0x..." } }
+     * Factus responde con JSON: { "data": { "pdf_base_64_encoded": "JVBERi0x..." } }
      */
     @SuppressWarnings("unchecked")
     public byte[] descargarFacturaPdf(String number) {
@@ -230,20 +237,10 @@ public class FactusService {
         }
     }
 
-    // ✅ Headers para endpoints JSON
     private HttpHeaders crearHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        if (this.accessToken == null) login();
-        headers.setBearerAuth(this.accessToken);
-        return headers;
-    }
-
-    // Headers exclusivos para descarga de PDF (mantenido por compatibilidad)
-    private HttpHeaders crearHeadersPdf() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(List.of(MediaType.APPLICATION_PDF, MediaType.APPLICATION_OCTET_STREAM));
         if (this.accessToken == null) login();
         headers.setBearerAuth(this.accessToken);
         return headers;
