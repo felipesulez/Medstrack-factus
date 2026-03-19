@@ -3,6 +3,7 @@ package com.felipesulez.reto_facturacion.service;
 import com.felipesulez.reto_facturacion.config.FactusProperties;
 import com.felipesulez.reto_facturacion.dto.*;
 import com.felipesulez.reto_facturacion.dto.factus.FactusApiResponse;
+import com.felipesulez.reto_facturacion.dto.factus.FactusBillListResponse;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -11,6 +12,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -97,6 +99,52 @@ public class FactusService {
     }
 
     /**
+     * Lista y filtra facturas desde Factus con paginación.
+     * Todos los parámetros son opcionales — sin filtros devuelve la primera página.
+     *
+     * @param referenceCode  Código de referencia interno (ej: MEDS-TEST-001)
+     * @param number         Número de factura DIAN (ej: SETP990026624)
+     * @param identification NIT o cédula del cliente
+     * @param status         1=validadas, 0=pendientes — null para ambas
+     * @param page           Número de página — null equivale a página 1
+     */
+    public FactusBillListResponse listarFacturas(
+            String referenceCode,
+            String number,
+            String identification,
+            Integer status,
+            Integer page) {
+
+        UriComponentsBuilder builder = UriComponentsBuilder
+                .fromHttpUrl(props.getApi().getUrl() + "/v1/bills");
+
+        if (referenceCode  != null) builder.queryParam("filter[reference_code]", referenceCode);
+        if (number         != null) builder.queryParam("filter[number]", number);
+        if (identification != null) builder.queryParam("filter[identification]", identification);
+        if (status         != null) builder.queryParam("filter[status]", status);
+        if (page           != null) builder.queryParam("page", page);
+
+        String url = builder.build().toUriString();
+        log.info("📋 Listando facturas — ref={} number={} id={} status={} page={}",
+                referenceCode, number, identification, status, page);
+
+        return ejecutarConRetry(() -> {
+            ResponseEntity<FactusBillListResponse> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(crearHeaders()),
+                    FactusBillListResponse.class
+            );
+            FactusBillListResponse body = response.getBody();
+            int total = (body != null && body.getData() != null
+                    && body.getData().getPagination() != null)
+                    ? body.getData().getPagination().getTotal() : 0;
+            log.info("✅ Facturas encontradas: {}", total);
+            return body;
+        });
+    }
+
+    /**
      * Busca la factura más reciente en estado pendiente (status=0) y la anula.
      * Factus bloquea el rango de numeración mientras exista una factura pendiente de DIAN.
      * Se llama automáticamente cuando enviarFactura() recibe un 409.
@@ -130,23 +178,24 @@ public class FactusService {
             }
 
             Map<String, Object> primera = bills.get(0);
-            Object referenceCode = primera.get("reference_code");
-            Object billNumber    = primera.get("number");
-            log.info("🗑️ Eliminando factura pendiente — ref: {}, number: {}", referenceCode, billNumber);
+            Object refCode   = primera.get("reference_code");
+            Object billNumber = primera.get("number");
+            log.info("🗑️ Eliminando factura pendiente — ref: {}, number: {}", refCode, billNumber);
 
-            String deleteUrl = props.getApi().getUrl() + "/v1/bills/destroy/reference/" + referenceCode;
+            String deleteUrl = props.getApi().getUrl() + "/v1/bills/destroy/reference/" + refCode;
             try {
                 restTemplate.exchange(
                         deleteUrl, HttpMethod.DELETE, new HttpEntity<>(crearHeaders()), Map.class
                 );
                 log.info("✅ Factura pendiente eliminada. Rango de numeración desbloqueado.");
             } catch (HttpClientErrorException deleteEx) {
-                log.error("❌ DELETE falló ({}) — body: {}", deleteEx.getStatusCode(), deleteEx.getResponseBodyAsString());
+                log.error("❌ DELETE falló ({}) — body: {}",
+                        deleteEx.getStatusCode(), deleteEx.getResponseBodyAsString());
                 throw deleteEx;
             }
 
         } catch (Exception e) {
-            log.error("❌ No se pudo limpiar la factura pendiente automáticamente: {}", e.getMessage());
+            log.error("❌ No se pudo limpiar la factura pendiente: {}", e.getMessage());
             throw new RuntimeException(
                     "Sandbox bloqueado. Ve a sandbox.factus.com.co → Facturas → " +
                             "abre la factura en estado Pendiente y usa 'Anular'.", e

@@ -2,6 +2,7 @@ package com.felipesulez.reto_facturacion.controller;
 
 import com.felipesulez.reto_facturacion.dto.InvoiceRequest;
 import com.felipesulez.reto_facturacion.dto.InvoiceResponse;
+import com.felipesulez.reto_facturacion.dto.factus.FactusBillListResponse;
 import com.felipesulez.reto_facturacion.service.FactusService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -25,10 +26,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/invoices")
 @RequiredArgsConstructor
-@Tag(name = "Facturación", description = "Endpoints para Medstrack — envío y descarga de facturas electrónicas")
+@Tag(name = "Facturación", description = "Endpoints para Medstrack — envío, consulta y descarga de facturas electrónicas")
 public class InvoiceController {
 
     private final FactusService factusService;
+
+    // -------------------------------------------------------------------------
+    // POST /send — Emitir factura
+    // -------------------------------------------------------------------------
 
     @PostMapping("/send")
     @Operation(
@@ -53,35 +58,81 @@ public class InvoiceController {
                             schema = @Schema(implementation = InvoiceResponse.class)
                     )
             ),
-            @ApiResponse(
-                    responseCode = "400",
-                    description = "Datos de entrada inválidos — revisar campo 'errors' en la respuesta",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)
-            ),
-            @ApiResponse(
-                    responseCode = "409",
-                    description = "Rango bloqueado — el sistema lo resuelve automáticamente y reintenta",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)
-            ),
-            @ApiResponse(
-                    responseCode = "422",
-                    description = "Factus rechazó la factura — revisar campo 'data' con el detalle del error",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)
-            )
+            @ApiResponse(responseCode = "400",
+                    description = "Datos de entrada inválidos",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)),
+            @ApiResponse(responseCode = "422",
+                    description = "Factus rechazó la factura — revisar campo 'data'",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE))
     })
-    public ResponseEntity<InvoiceResponse> enviarFactura(@Valid @RequestBody InvoiceRequest request) {
+    public ResponseEntity<InvoiceResponse> enviarFactura(
+            @Valid @RequestBody InvoiceRequest request) {
         return ResponseEntity.ok(factusService.enviarFactura(request));
     }
+
+    // -------------------------------------------------------------------------
+    // GET / — Listar y filtrar facturas
+    // -------------------------------------------------------------------------
+
+    @GetMapping
+    @Operation(
+            summary = "Listar facturas",
+            description = """
+                    Devuelve la lista paginada de facturas registradas en Factus.
+                    Todos los filtros son opcionales — sin parámetros devuelve la primera página
+                    con las 10 facturas más recientes.
+                    
+                    Casos de uso:
+                    - Buscar la factura de un cliente por su NIT para reenviarle el PDF
+                    - Verificar si una factura quedó validada o pendiente
+                    - Paginar el historial completo de facturas emitidas
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Lista de facturas con paginación",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = FactusBillListResponse.class)
+                    )
+            ),
+            @ApiResponse(responseCode = "401",
+                    description = "Token expirado — el sistema reintenta automáticamente",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE))
+    })
+    public ResponseEntity<FactusBillListResponse> listarFacturas(
+            @Parameter(description = "Filtrar por código de referencia interno", example = "MEDS-TEST-001")
+            @RequestParam(required = false) String referenceCode,
+
+            @Parameter(description = "Filtrar por número de factura DIAN", example = "SETP990026624")
+            @RequestParam(required = false) String number,
+
+            @Parameter(description = "Filtrar por NIT o cédula del cliente", example = "123456789")
+            @RequestParam(required = false) String identification,
+
+            @Parameter(description = "Filtrar por estado: 1=validadas, 0=pendientes",
+                    schema = @Schema(allowableValues = {"0", "1"}))
+            @RequestParam(required = false) Integer status,
+
+            @Parameter(description = "Número de página (empieza en 1)", example = "1")
+            @RequestParam(required = false) Integer page) {
+
+        return ResponseEntity.ok(
+                factusService.listarFacturas(referenceCode, number, identification, status, page)
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /download-pdf/{number} — Descargar PDF
+    // -------------------------------------------------------------------------
 
     @GetMapping(value = "/download-pdf/{number}", produces = MediaType.APPLICATION_PDF_VALUE)
     @Operation(
             summary = "Descargar PDF de una factura",
             description = """
                     Recupera el PDF binario desde Factus y lo devuelve listo para descarga.
-                    
                     Usa el número de factura asignado por la DIAN (ej: SETP990025918).
-                    El archivo se sirve con Content-Disposition: attachment, por lo que el navegador
-                    lo descarga directamente sin abrirlo en una pestaña nueva.
                     """
     )
     @ApiResponses({
@@ -95,29 +146,15 @@ public class InvoiceController {
                     headers = {
                             @Header(name = "Content-Disposition",
                                     description = "attachment; filename=\"factura-{number}.pdf\"",
-                                    schema = @Schema(type = "string")),
-                            @Header(name = "Content-Type",
-                                    description = "application/pdf",
                                     schema = @Schema(type = "string"))
                     }
             ),
-            @ApiResponse(
-                    responseCode = "404",
+            @ApiResponse(responseCode = "404",
                     description = "Factura no encontrada en Factus",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)
-            ),
-            @ApiResponse(
-                    responseCode = "401",
-                    description = "Token expirado — el sistema reintenta automáticamente",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)
-            )
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE))
     })
     public ResponseEntity<byte[]> descargarFactura(
-            @Parameter(
-                    description = "Número de factura asignado por Factus/DIAN (ej: SETP990025918)",
-                    example = "SETP990025918",
-                    required = true
-            )
+            @Parameter(description = "Número DIAN de la factura", example = "SETP990026624", required = true)
             @PathVariable String number) {
 
         byte[] pdfBytes = factusService.descargarFacturaPdf(number);
@@ -134,6 +171,10 @@ public class InvoiceController {
 
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
+
+    // -------------------------------------------------------------------------
+    // GET /debug/token — Solo perfil dev
+    // -------------------------------------------------------------------------
 
     @Profile("dev")
     @GetMapping("/debug/token")
