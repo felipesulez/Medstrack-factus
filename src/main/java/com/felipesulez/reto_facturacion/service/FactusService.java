@@ -139,7 +139,7 @@ public class FactusService {
             int total = (body != null && body.getData() != null
                     && body.getData().getPagination() != null)
                     ? body.getData().getPagination().getTotal() : 0;
-            log.info("✅ Facturas encontradas: {}", total);
+            log.info("✅ Facturas encontrada: {}", total);
             return body;
         });
     }
