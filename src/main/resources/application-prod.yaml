@@ -1,6 +1,13 @@
 spring:
   application:
     name: reto-facturacion
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
 
 factus:
   http:
@@ -34,6 +41,14 @@ management:
   endpoint:
     health:
       show-details: never
+
+# Swagger visible en Railway con HTTPS correcto
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    try-it-out-enabled: true
+  api-docs:
+    path: /v3/api-docs
 
 # Logging estructurado para producción
 logging:
