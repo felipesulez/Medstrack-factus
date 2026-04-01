@@ -1,150 +1,225 @@
-# Medstrack Facturación — Integración Factus / DIAN
+# Medstrack Billing
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Java-17-ED8B00?style=flat-square&logo=openjdk&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Spring_Boot-3.4.3-6DB33F?style=flat-square&logo=springboot&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Docs-Swagger_UI-85EA2D?style=flat-square&logo=swagger&logoColor=black"/>
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square"/>
-</p>
+Production REST API for electronic invoice issuance, validation, and management in compliance with Colombian tax authority (DIAN) regulations via the Factus platform.
 
-<p align="center">
-  API REST en Spring Boot para emitir, consultar y descargar <strong>facturas electrónicas</strong> validadas ante la DIAN a través de la API de Factus.<br/>
-  Backend de integración para la plataforma <strong>Medstrack</strong>.
-</p>
+> **Live API** — https://medstrack-factus-production.up.railway.app/swagger-ui/index.html
+> **Health** — https://medstrack-factus-production.up.railway.app/actuator/health
 
 ---
 
-## Arquitectura
+## Overview
 
-![Diagrama de secuencia](docs/architecture.svg)
+Colombian tax law requires every business transaction to be reported to DIAN in real time. This service abstracts the full invoice lifecycle — OAuth2 authentication, DIAN validation, retry logic, sandbox conflict resolution, and PDF retrieval — behind a clean REST interface that any internal system can consume with a minimal JSON payload.
 
----
-
-## Funcionalidades
-
-- **Emisión de facturas electrónicas** validadas ante la DIAN vía Factus
-- **Cálculo automático del DV** del NIT del cliente (algoritmo oficial DIAN)
-- **Enriquecimiento de defaults**: IVA 19%, forma de pago, tipo de operación y tipo de documento se completan automáticamente si se omiten
-- **Renovación automática del token OAuth2**: si el token expira mid-request, el interceptor lo refresca y reintenta de forma transparente
-- **Auto-limpieza del sandbox**: ante un 409 (rango bloqueado por factura pendiente), el sistema la elimina y reintenta sin intervención manual
-- **Descarga de PDF** de cualquier factura por número DIAN
-- **Listado y filtrado paginado** de facturas por referencia, número, NIT o estado
+Built as the billing backbone for the **Medstrack** healthcare platform.
 
 ---
 
-## Endpoints
+## System Design
 
-Base URL: `/api/v1/invoices`
+### C4 Container Diagram
 
-| Método | Ruta | Descripción |
+![C4 Container Diagram](docs/c4-container.svg)
+
+### Request Sequence — End to End
+
+![Sequence Diagram](docs/architecture.svg)
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Railway Cloud · Spring Boot 3.4.3 · Java 17            │
+│                                                         │
+│  InvoiceController  ──▶  FactusService  ──▶  Factus API ──▶ DIAN
+│       │                       │                         │
+│  (REST entry)         (business logic          (external)
+│  (validation)          token · retry                    │
+│  (Swagger UI)          defaults · DV)                   │
+│                                                         │
+│                    TokenInterceptor                     │
+│                  (OAuth2 auto-refresh)                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key design decisions:**
+
+- **No database.** All state lives in Factus. The service is stateless and horizontally scalable.
+- **Token self-healing.** A `ClientHttpRequestInterceptor` intercepts every 401, refreshes the Bearer token, and replays the original request — transparent to the caller.
+- **409 auto-cleanup.** Factus sandbox blocks a numbering range when a pending invoice exists. The service detects the conflict, deletes the pending invoice via `DELETE /v1/bills/destroy/reference/{ref}`, and retries automatically.
+- **Smart defaults.** `enriquecerConDefaults()` fills VAT (19%), payment method, operation type, document type, and municipality — callers only send what they know.
+- **DV algorithm.** `NitUtils.calcularDV()` implements the official DIAN weighted-sum algorithm for NIT verification digit calculation.
+
+---
+
+## API Reference
+
+Base URL: `https://medstrack-factus-production.up.railway.app/api/v1/invoices`
+
+| Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/send` | Emite y valida una factura electrónica |
-| `GET` | `/` | Lista facturas con filtros opcionales |
-| `GET` | `/download-pdf/{number}` | Descarga el PDF binario de una factura |
-| `GET` | `/debug/token` | Muestra el token activo *(solo perfil `dev`)* |
+| `POST` | `/send` | Issue and validate an electronic invoice against DIAN |
+| `GET` | `/` | List invoices — filterable by reference, NIT, number, status, page |
+| `GET` | `/download-pdf/{number}` | Stream PDF binary by DIAN invoice number |
+| `GET` | `/debug/token` | Inspect active OAuth2 token *(dev profile only)* |
 
-Documentación interactiva: [`/swagger-ui/index.html`](https://medstrack-factus-production.up.railway.app/swagger-ui/index.html)
+Full interactive reference with request/response schemas → [Swagger UI](https://medstrack-factus-production.up.railway.app/swagger-ui/index.html)
+
+### Minimal invoice request
+
+```json
+POST /api/v1/invoices/send
+Content-Type: application/json
+
+{
+  "reference_code": "MEDS-2026-001",
+  "customer": {
+    "identification": "901234567",
+    "company": "Medstrack SAS",
+    "names": "Felipe Sulez",
+    "address": "Calle 93 # 29-10, Bogota",
+    "email": "billing@medstrack.com.co"
+  },
+  "items": [
+    {
+      "code_reference": "SRV-001",
+      "name": "Platform consulting",
+      "quantity": "1.00",
+      "price": "500000.00"
+    }
+  ]
+}
+```
+
+All optional fields (`numbering_range_id`, `payment_form`, `payment_method`, `operation_type`, `dv`, `municipality_id`) are resolved automatically by the service.
+
+### Response
+
+```json
+{
+  "number": "SETP990026624",
+  "reference_code": "MEDS-2026-001",
+  "status": "validated",
+  "customer": "Medstrack SAS",
+  "total": "595000.00",
+  "cufe": "abc123...",
+  "pdf_url": "/api/v1/invoices/download-pdf/SETP990026624"
+}
+```
+
+### Error shape
+
+```json
+{
+  "status": 400,
+  "message": "Validation failed: input data does not meet requirements",
+  "errors": {
+    "customer.identification": "NIT is required",
+    "items": "Invoice must have at least one item"
+  },
+  "path": "/api/v1/invoices/send",
+  "timestamp": "2026-03-25T00:10:00"
+}
+```
 
 ---
 
 ## Stack
 
-| Capa | Tecnología |
+| | |
 |---|---|
-| Lenguaje | Java 17 |
+| Language | Java 17 |
 | Framework | Spring Boot 3.4.3 |
-| HTTP cliente | RestTemplate + interceptor OAuth2 |
-| Validación | Spring Validation (`@Valid`) |
-| Documentación | Springdoc OpenAPI / Swagger UI 2.8.5 |
-| Monitoreo | Spring Actuator (`/actuator/health`) |
-| Build & Deploy | Maven + Railway (Nixpacks) |
+| HTTP client | RestTemplate + OAuth2 interceptor |
+| Validation | Spring Validation (`@Valid`) |
+| API docs | Springdoc OpenAPI · Swagger UI 2.8.5 |
+| Monitoring | Spring Actuator |
+| Build | Maven |
+| Deploy | Railway · Nixpacks |
 
 ---
 
-## Estructura del proyecto
+## Project Structure
 
 ```
 src/main/java/.../reto_facturacion/
 ├── controller/
-│   └── InvoiceController.java       # Endpoints REST con anotaciones Swagger
+│   └── InvoiceController.java        REST endpoints · OpenAPI annotations
 ├── service/
-│   └── FactusService.java           # Lógica de negocio, tokens, retry y limpieza sandbox
+│   └── FactusService.java            Business logic · token management · retry · 409 cleanup
 ├── config/
-│   ├── FactusProperties.java        # Propiedades tipadas (@ConfigurationProperties)
-│   ├── RestTemplateConfig.java      # Bean RestTemplate con timeouts e interceptor
-│   └── TokenInterceptor.java        # Renovación automática de token en 401
+│   ├── FactusProperties.java         Type-safe config (@ConfigurationProperties)
+│   ├── RestTemplateConfig.java       HTTP client · configurable timeouts
+│   └── TokenInterceptor.java         OAuth2 Bearer auto-refresh on 401
 ├── dto/
-│   ├── InvoiceRequest.java          # Payload de entrada con validaciones @Valid
-│   ├── InvoiceResponse.java         # Respuesta mapeada desde Factus
-│   ├── CustomerDTO.java             # Datos del cliente receptor
-│   ├── ItemDTO.java                 # Líneas de producto/servicio
-│   └── factus/                      # DTOs que mapean la respuesta interna de Factus
+│   ├── InvoiceRequest.java           Input payload · @Valid constraints
+│   ├── InvoiceResponse.java          Response mapped from Factus
+│   ├── CustomerDTO.java              Invoice recipient
+│   ├── ItemDTO.java                  Line items
+│   └── factus/                       Internal Factus response DTOs
 ├── exception/
-│   ├── GlobalExceptionHandler.java  # Manejo centralizado de errores (4xx, 5xx, @Valid)
-│   └── ErrorResponse.java           # Estructura uniforme de error
+│   ├── GlobalExceptionHandler.java   Centralized error handling · 4xx · 5xx · @Valid
+│   └── ErrorResponse.java            Uniform error response shape
 └── util/
-    └── NitUtils.java                # Algoritmo DIAN para cálculo del dígito verificador
+    └── NitUtils.java                 DIAN NIT verification digit algorithm
 ```
 
 ---
 
-## Configuración
+## Configuration
 
-Todas las credenciales se inyectan como **variables de entorno**. Nunca se hardcodean en el código ni en archivos de configuración commiteados.
+All credentials are injected via environment variables. Nothing is hardcoded or committed.
 
-> ⚠️ Asegúrate de añadir `src/main/resources/application-dev.yaml` a tu `.gitignore`.
+> Add `src/main/resources/application-dev.yaml` to `.gitignore`.
 
-### Variables requeridas
+### Required
 
-| Variable | Descripción |
+| Variable | Description |
 |---|---|
-| `FACTUS_API_URL` | URL base de la API de Factus |
-| `FACTUS_CLIENT_ID` | Client ID OAuth2 |
-| `FACTUS_CLIENT_SECRET` | Client Secret OAuth2 |
-| `FACTUS_USERNAME` | Usuario de la cuenta Factus |
-| `FACTUS_PASSWORD` | Contraseña de la cuenta Factus |
+| `FACTUS_API_URL` | Factus API base URL |
+| `FACTUS_CLIENT_ID` | OAuth2 client ID |
+| `FACTUS_CLIENT_SECRET` | OAuth2 client secret |
+| `FACTUS_USERNAME` | Factus account username |
+| `FACTUS_PASSWORD` | Factus account password |
 
-### Variables opcionales
+### Optional
 
-| Variable | Descripción | Defecto |
+| Variable | Description | Default |
 |---|---|---|
-| `FACTUS_RANGE_ID` | ID del rango de numeración DIAN | `8` |
-| `FACTUS_MUN_ID` | ID de municipio por defecto | `980` |
-| `FACTUS_CONNECT_TIMEOUT` | Timeout de conexión (ms) | `5000` |
-| `FACTUS_READ_TIMEOUT` | Timeout de lectura (ms) | `15000` |
+| `FACTUS_RANGE_ID` | DIAN numbering range ID | `8` |
+| `FACTUS_MUN_ID` | Default municipality ID | `980` |
+| `FACTUS_CONNECT_TIMEOUT` | Connection timeout (ms) | `5000` |
+| `FACTUS_READ_TIMEOUT` | Read timeout (ms) | `15000` |
 
 ---
 
-## Ejecución local
+## Local Setup
 
 ```bash
-# 1. Clonar y compilar
 git clone https://github.com/felipesulez/Medstrack-factus.git
 cd Medstrack-factus
 mvn clean package -DskipTests
 
-# 2. Definir variables de entorno (nunca en el YAML)
 export FACTUS_API_URL=https://api-sandbox.factus.com.co
-export FACTUS_CLIENT_ID=tu_client_id
-export FACTUS_CLIENT_SECRET=tu_client_secret
-export FACTUS_USERNAME=tu_usuario
-export FACTUS_PASSWORD=tu_password
+export FACTUS_CLIENT_ID=<your_client_id>
+export FACTUS_CLIENT_SECRET=<your_client_secret>
+export FACTUS_USERNAME=<your_username>
+export FACTUS_PASSWORD=<your_password>
 
-# 3. Ejecutar en perfil dev
 java -Dspring.profiles.active=dev -jar target/*.jar
-
-# 4. Abrir Swagger UI
-open http://localhost:8080/swagger-ui/index.html
 ```
 
-Al arrancar en perfil `dev`, `FactusRunner` ejecuta automáticamente un smoke test que emite una factura de prueba y confirma la conexión con Factus.
+On `dev` startup, `FactusRunner` issues a smoke-test invoice to verify the sandbox connection.
+
+Swagger UI → http://localhost:8080/swagger-ui/index.html
 
 ---
 
-## Despliegue en Railway
+## Deployment
 
-El archivo `railway.toml` ya está configurado:
+Deployed on Railway via Nixpacks. `railway.toml` is already configured:
 
 ```toml
 [build]
@@ -158,37 +233,15 @@ restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 ```
 
-Solo define las variables de entorno en el panel de Railway y haz push. El health check apunta a `/actuator/health`.
-
 ---
 
-## Ejemplo de petición
+## Security
 
-```bash
-curl -X POST https://medstrack-factus-production.up.railway.app/api/v1/invoices/send \
-  -H "Content-Type: application/json" \
-  -d '{
-    "reference_code": "MEDS-2026-001",
-    "observation": "Servicio de consultoría técnica",
-    "customer": {
-      "identification": "901234567",
-      "company": "Medstrack SAS",
-      "names": "Felipe Sulez",
-      "address": "Calle 5 # 2-10, Popayán",
-      "email": "contacto@medstrack.com.co"
-    },
-    "items": [
-      {
-        "code_reference": "SRV-001",
-        "name": "Consultoría plataforma Medstrack",
-        "quantity": "1.00",
-        "price": "500000.00"
-      }
-    ]
-  }'
-```
-
-Los campos opcionales (`numbering_range_id`, `payment_form`, `payment_method`, `operation_type`, `dv`, `municipality_id`) se completan automáticamente si se omiten.
+- Credentials managed exclusively via environment variables
+- `application-dev.yaml` in `.gitignore` — never committed
+- `/debug/token` restricted to `dev` profile via `@Profile("dev")`
+- Actuator exposes only `/health` and `/info` in production
+- No secrets hardcoded anywhere in the codebase
 
 ---
 
@@ -198,19 +251,23 @@ Los campos opcionales (`numbering_range_id`, `payment_form`, `payment_method`, `
 mvn test
 ```
 
-Incluye `NitUtilsTest` con casos de prueba para el algoritmo de cálculo del DV del NIT.
+`NitUtilsTest` covers the DIAN verification digit algorithm with boundary and edge cases.
 
 ---
 
-## Seguridad
+## License & Copyright
 
-- Las credenciales se gestionan exclusivamente mediante variables de entorno
-- `application-dev.yaml` está en `.gitignore` y nunca se commitea
-- El endpoint `/debug/token` solo está activo en el perfil `dev`, nunca en producción
-- En producción, Actuator expone únicamente `/actuator/health` e `/actuator/info`
+```
+Copyright (c) 2026 Felipe Sulez. All rights reserved.
+
+This project and its source code are the intellectual property of Felipe Sulez.
+Unauthorized copying, distribution, modification, or commercial use of this
+software, in whole or in part, without the express written permission of the
+author is strictly prohibited.
+```
+
+For licensing inquiries, open an [issue](https://github.com/felipesulez/Medstrack-factus/issues) or contact via GitHub.
 
 ---
 
-## Autor
-
-**Felipe Sulez** — [@felipesulez](https://github.com/felipesulez)
+© 2026 Felipe Sulez · Medstrack Billing
