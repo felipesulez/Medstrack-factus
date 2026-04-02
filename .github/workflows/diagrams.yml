@@ -2,13 +2,12 @@ name: Generate diagrams
 
 on:
   push:
-    # IMPORTANTE: Incluimos tu rama de feature para pruebas
     branches: [ main, feature/c4-plantuml-actions ]
     paths:
       - 'docs/diagrams/**.puml'
 
 jobs:
-  render_diagrams: # Nombre único para evitar conflictos con 'generate'
+  render_diagrams:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,24 +22,31 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Render con PlantUML JAR
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Render con PlantUML
         run: |
-          # Descargamos el jar con un nombre que no choque con nada
-          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar -o ./plantuml-engine.jar
+          # Asegurar que el directorio de salida existe
+          mkdir -p docs/diagrams
           
-          # Renderizar el SVG
-          java -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
+          # Descargar versión estable 1.2023.10 (la mejor para C4-PlantUML)
+          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2023.10/plantuml-1.2023.10.jar -o ./plantuml-engine.jar
+          
+          # Ejecutar con permisos de inclusión remota para descargar la librería C4
+          java -Dallow_include=true -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
 
       - name: Push results
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/diagrams/c4-container.svg
           
           if git diff --cached --quiet; then
-            echo "No hay cambios detectados en el diagrama."
+            echo "Sin cambios detectados en el diagrama."
           else
-            # El [skip ci] es sagrado aquí para evitar bucles de despliegue
+            # El [skip ci] evita que Railway intente desplegar este commit automático
             git commit -m "docs: auto-generate C4 diagram [skip ci]"
             git push origin ${{ github.ref_name }}
           fi
