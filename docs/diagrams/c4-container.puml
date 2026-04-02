@@ -1,5 +1,5 @@
 @startuml c4-container
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!include <C4/C4_Container>
 
 LAYOUT_WITH_LEGEND()
 
@@ -8,9 +8,9 @@ title Medstrack Billing — C4 Container Diagram [Level 2]
 Person(client, "Medstracker", "Client system that issues invoices")
 
 System_Boundary(system, "Billing System · Railway Cloud") {
-Container(api, "REST API", "Spring Boot", "Receives HTTP requests and validates")
-Container(service, "FactusService", "Spring Bean", "Business logic and OAuth2")
-Container(interceptor, "TokenInterceptor", "Spring Component", "Auto-refreshes tokens")
+    Container(api, "REST API", "Spring Boot", "Receives HTTP requests and validates")
+    Container(service, "FactusService", "Spring Bean", "Business logic and OAuth2")
+    Container(interceptor, "TokenInterceptor", "Spring Component", "Auto-refreshes tokens")
 }
 
 System_Ext(factus, "Factus API", "Colombian e-invoicing platform")
