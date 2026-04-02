@@ -2,18 +2,19 @@ name: Generate diagrams
 
 on:
   push:
+    # IMPORTANTE: Incluimos tu rama de feature para pruebas
     branches: [ main, feature/c4-plantuml-actions ]
     paths:
       - 'docs/diagrams/**.puml'
 
 jobs:
-  generate:
+  render_diagrams: # Nombre único para evitar conflictos con 'generate'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Java
@@ -22,22 +23,24 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Generate SVG with PlantUML JAR
+      - name: Render con PlantUML JAR
         run: |
-          # 1. Descargar la versión oficial (la más compatible con C4)
-          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar -o plantuml.jar
+          # Descargamos el jar con un nombre que no choque con nada
+          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar -o ./plantuml-engine.jar
           
-          # 2. Ejecutar usando Java directamente
-          java -jar plantuml.jar -tsvg docs/diagrams/c4-container.puml
+          # Renderizar el SVG
+          java -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
 
-      - name: Commit and Push
+      - name: Push results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/diagrams/c4-container.svg
+          
           if git diff --cached --quiet; then
-            echo "No hay cambios en el diagrama."
+            echo "No hay cambios detectados en el diagrama."
           else
-            git commit -m "ci: update c4 diagram [skip ci]"
-            git push
+            # El [skip ci] es sagrado aquí para evitar bucles de despliegue
+            git commit -m "docs: auto-generate C4 diagram [skip ci]"
+            git push origin ${{ github.ref_name }}
           fi
