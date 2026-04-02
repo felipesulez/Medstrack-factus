@@ -22,8 +22,46 @@ Built as the billing backbone for the **Medstrack** healthcare platform.
 ![C4 Container Diagram](docs/c4-container.svg)
 
 ### Request Sequence — End to End
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client (Medstrack)
+    participant IC as InvoiceController
+    participant FS as FactusService
+    participant FA as Factus API / DIAN
 
-![Sequence Diagram](docs/architecture.svg)
+    C->>IC: POST /api/v1/invoices/send
+    IC->>IC: @Valid + enriquecerConDefaults()
+    IC->>FS: enviarFactura()
+    FS->>FS: crearHeaders() — Bearer token
+
+    FS->>FA: POST /v1/bills/validate
+
+    alt 401 token expired
+        FA-->>FS: 401 Unauthorized
+        FS->>FA: refreshToken() → retry
+    end
+
+    alt 409 sandbox blocked
+        FA-->>FS: 409 Conflict
+        FS->>FA: DELETE pending invoice → retry
+    end
+
+    FA-->>FS: 200 FactusApiResponse
+    FS->>FS: InvoiceResponse.from(response)
+    FS-->>IC: InvoiceResponse
+    IC-->>C: 200 OK + DIAN invoice number
+
+    Note over C,FA: PDF Download Flow
+
+    C->>IC: GET /download-pdf/{number}
+    IC->>FS: downloadInvoicePdf()
+    FS->>FA: GET /v1/bills/download-pdf/{number}
+    FA-->>FS: { pdf_base_64_encoded }
+    FS->>FS: Base64.decode() → byte[]
+    FS-->>IC: byte[]
+    IC-->>C: 200 application/pdf
+```
 
 ---
 
