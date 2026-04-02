@@ -1,32 +1,49 @@
-name: Generate Diagrams
+name: Generate diagrams
 
 on:
   push:
-    branches:
-      - main
-      - feature/c4-plantuml-actions
-  workflow_dispatch:
+    branches: [ main, feature/c4-plantuml-actions ]
+    paths:
+      - 'docs/diagrams/**.puml'
 
 jobs:
-  generate:
+  render_diagrams:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install PlantUML
-        run: sudo apt-get update && sudo apt-get install -y plantuml
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
 
-      - name: Generate diagrams
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Render con PlantUML
         run: |
           mkdir -p docs/diagrams
-          plantuml -tsvg docs/diagrams/c4-container.puml
+          # Bajamos la versión 1.2023.1 que tiene las librerías C4 embebidas
+          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2023.1/plantuml-1.2023.1.jar -o ./plantuml-engine.jar
+          
+          # Renderizado directo
+          java -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
 
-      - name: Commit diagrams
+      - name: Push results
+        if: success()
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
-          git add docs/diagrams/*.svg
-          git commit -m "chore: auto-generate diagrams" || echo "No    
-          changes"
-          git push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/diagrams/c4-container.svg
+          
+          if git diff --cached --quiet; then
+            echo "Nada que subir."
+          else
+            git commit -m "docs: fix diagram line 10 [skip ci]"
+            git push origin ${{ github.ref_name }}
+          fi
