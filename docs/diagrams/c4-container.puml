@@ -1,26 +1,26 @@
 @startuml c4-container
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!include <C4/C4_Container>
 
 LAYOUT_WITH_LEGEND()
 
-title Medstrack Billing — C4 Container Diagram [Level 2]
+title Medstracks Billing — C4 Container Diagram [Level 2]
 
-Person(client, "Medstrack", "Client system that\nissues invoices")
+Person(client, "Medstracker", "Client system that issues invoices")
 
-System_Boundary(system, "Billing System · Railway Cloud · Spring Boot 3.4.3 / Java 17") {
-    Container(api, "REST API", "Spring Boot · Java 17", "Receives HTTP requests\nvalidates · delegates\nSwagger UI")
-    Container(service, "FactusService", "Spring Bean", "Business logic · smart defaults\nOAuth2 token management\n409 auto-cleanup · NIT DV algorithm")
-    Container(interceptor, "TokenInterceptor", "Spring Component", "Auto-refreshes Bearer token\non 401 · transparent retry")
+System_Boundary(system, "Billing System · Railway Cloud") {
+    Container(api, "REST API", "Spring Boot", "Receives HTTP requests and validates")
+    Container(service, "FactusService", "Spring Bean", "Business logic and OAuth2")
+    Container(interceptor, "TokenInterceptor", "Spring Component", "Auto-refreshes tokens")
 }
 
-System_Ext(factus, "Factus API", "Colombian e-invoicing platform\nsandbox & production\nfactus.com.co")
-System_Ext(dian, "DIAN", "Colombian Tax Authority\nReal-time invoice validation")
+System_Ext(factus, "Factus API", "Colombian e-invoicing platform")
+System_Ext(dian, "DIAN", "Colombian Tax Authority")
 
-Rel(client, api, "HTTPS / JSON", "POST /send · GET /")
-Rel(api, service, "delegates", "business logic")
-Rel(service, interceptor, "uses", "authenticate outbound requests")
-Rel(service, factus, "HTTPS / REST", "POST /v1/bills/validate")
-Rel(factus, dian, "validates & registers", "real-time")
+Rel(client, api, "HTTPS / JSON", "POST /send")
+Rel(api, service, "delegates", "logic")
+Rel(service, interceptor, "uses", "auth")
+Rel(service, factus, "HTTPS / REST", "validate")
+Rel(factus, dian, "registers", "real-time")
 
 SHOW_LEGEND()
 @enduml

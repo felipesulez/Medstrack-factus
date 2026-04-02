@@ -1,0 +1,49 @@
+name: Generate diagrams
+
+on:
+  push:
+    branches: [ main, feature/c4-plantuml-actions ]
+    paths:
+      - 'docs/diagrams/**.puml'
+
+jobs:
+  render_diagrams:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Render con PlantUML
+        run: |
+          mkdir -p docs/diagrams
+          # Bajamos la versión 1.2023.1 que tiene las librerías C4 embebidas
+          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2023.1/plantuml-1.2023.1.jar -o ./plantuml-engine.jar
+          
+          # Renderizado directo
+          java -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
+
+      - name: Push results
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/diagrams/c4-container.svg
+          
+          if git diff --cached --quiet; then
+            echo "Nada que subir."
+          else
+            git commit -m "docs: fix diagram line 10 [skip ci]"
+            git push origin ${{ github.ref_name }}
+          fi
