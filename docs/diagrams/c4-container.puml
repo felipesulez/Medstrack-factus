@@ -5,7 +5,7 @@ LAYOUT_WITH_LEGEND()
 
 title Medstrack Billing — C4 Container Diagram [Level 2]
 
-Person(client, "Medstrack", "Client system that issues invoices")
+Person(client, "Medstracker", "Client system that issues invoices")
 
 System_Boundary(system, "Billing System · Railway Cloud") {
     Container(api, "REST API", "Spring Boot", "Receives HTTP requests and validates")

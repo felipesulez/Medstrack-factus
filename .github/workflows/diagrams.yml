@@ -20,21 +20,20 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11' # Usamos Java 11 para máxima compatibilidad con versiones viejas de PlantUML
 
       - name: Install Graphviz
         run: sudo apt-get update && sudo apt-get install -y graphviz
 
       - name: Render con PlantUML
         run: |
-          # Asegurar que el directorio de salida existe
           mkdir -p docs/diagrams
           
-          # Descargar versión estable 1.2023.10 (la mejor para C4-PlantUML)
-          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2023.10/plantuml-1.2023.10.jar -o ./plantuml-engine.jar
+          # Descargar una versión ultra-estable
+          curl -L https://github.com/plantuml/plantuml/releases/download/v1.2022.7/plantuml-1.2022.7.jar -o ./plantuml-engine.jar
           
-          # Ejecutar con permisos de inclusión remota para descargar la librería C4
-          java -Dallow_include=true -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
+          # Ejecutar forzando UTF-8 y permitiendo inclusiones
+          java -Dfile.encoding=UTF-8 -Dallow_include=true -jar ./plantuml-engine.jar -tsvg docs/diagrams/c4-container.puml
 
       - name: Push results
         if: success()
@@ -44,9 +43,8 @@ jobs:
           git add docs/diagrams/c4-container.svg
           
           if git diff --cached --quiet; then
-            echo "Sin cambios detectados en el diagrama."
+            echo "No hay cambios."
           else
-            # El [skip ci] evita que Railway intente desplegar este commit automático
-            git commit -m "docs: auto-generate C4 diagram [skip ci]"
+            git commit -m "docs: generate c4 diagram [skip ci]"
             git push origin ${{ github.ref_name }}
           fi
