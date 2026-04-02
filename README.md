@@ -19,7 +19,7 @@ Built as the billing backbone for the **Medstrack** healthcare platform.
 
 ### C4 Container Diagram
 
-![C4 Container Diagram](docs/c4-container.svg)
+![C4 Container Diagram](docs/diagrams/c4-container.svg)
 
 ### Request Sequence — End to End
 ```mermaid
