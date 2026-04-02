@@ -3,7 +3,7 @@
 
 LAYOUT_WITH_LEGEND()
 
-title Medstrack Billing — C4 Container Diagram [Level 2]
+title Medstracks Billing — C4 Container Diagram [Level 2]
 
 Person(client, "Medstracker", "Client system that issues invoices")
 
